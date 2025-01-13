@@ -4,25 +4,20 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/noise.hpp>
 #include <vector>
-#include "imgui.h"
-#include "imgui_impl_glfw.h"
-#include "imgui_impl_opengl3.h"
-
 
 struct TerrainData {
     std::vector<float> vertices;  // [x,y,z,  x,y,z,  x,y,z, ...]
     std::vector<unsigned int> indices;
 };
 
-
-TerrainData generateTerrain(int width, int height, float scale, float seed, int octaves, int persistence, float frequency) {
+TerrainData generateTerrain(int width, int height, float scale, float seed, int octaves, float persistence, float frequency, float lacunarity, float heightScale) {
     TerrainData terrain;
     terrain.vertices.reserve(width * height * 3);
 
-    // Parameters for more interesting terrain
-    const float heightScale = 10.0f;  // Amplify the height variation
     for (int z = 0; z < height; z++) {
         for (int x = 0; x < width; x++) {
+
+                
             float worldX = (float)x - (width / 2.0f);
             float worldZ = (float)z - (height / 2.0f);
 
@@ -32,18 +27,19 @@ TerrainData generateTerrain(int width, int height, float scale, float seed, int 
             float maxValue = 0.0f;
 
             for (int o = 0; o < octaves; o++) {
-                // Sample perlin noise with seed component
-                float sampleX = (worldX / scale) * frequency;
-                float sampleZ = (worldZ / scale) * frequency;
+                float currentFreq = frequency * pow(lacunarity, o); // Use lacunarity to adjust frequency
+                // Sample Perlin noise with seed component
+                float sampleX = (worldX / scale) * currentFreq;
+                float sampleZ = (worldZ / scale) * currentFreq;
 
                 // Use seed in the Y coordinate for continuous change
-                float sampleY = seed * 0.8f * frequency;
+                float sampleY = seed * 0.5f * currentFreq;
 
                 float noiseValue = glm::perlin(glm::vec3(sampleX, sampleY, sampleZ));
                 heightValue += noiseValue * amplitude;
 
                 maxValue += amplitude;
-                amplitude *= persistence;
+                amplitude *= persistence; // Decrease amplitude with persistence
             }
 
             // Normalize and scale the height

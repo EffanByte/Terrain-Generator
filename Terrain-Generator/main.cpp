@@ -17,6 +17,7 @@
         glViewport(0, 0, width, height);
     }
 
+    bool isGuiOpen = false;  // Tracks whether the GUI menu is open
 
     void initImGui(GLFWwindow* window) {
         // Initialize ImGui
@@ -35,46 +36,50 @@
     float persistence = 0.5f;
     int width = 256;
     int height = 256;
-    float scale = 50.0f;
     float frequency = 2.0f;
+    int scale = 50;
+    float heightScale = 10.0f;
+    float lacunarity = 2.0f;
 
     bool terrainNeedsUpdate = false; //update whenever changes in noise function
 
     void renderImGuiMenu() {
-        // Start new ImGui frame
+        if (!isGuiOpen) return;  // Don't render if menu is closed
+
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
-        // Create a window
         ImGui::Begin("Settings Menu");
 
-        // Store old values to detect changes
-        float oldPersistence = persistence;
-        int oldOctaves = octaves;
+        int oldoctaves = octaves;
         int oldwidth = width;
         int oldheight = height;
         float oldfrequency = frequency;
+        int oldscale = scale;
+        float oldpersistence = persistence;
+        float oldheightscale = heightScale;
+        float oldLacunarity = lacunarity;
 
-        // Add sliders
         ImGui::SliderFloat("Persistence", &persistence, 0.0f, 1.0f);
         ImGui::SliderInt("Octaves", &octaves, 0, 10);
         ImGui::SliderInt("Width", &width, 0, 1000);
         ImGui::SliderInt("height", &height, 0, 1000);
         ImGui::SliderFloat("Frequency", &frequency, 0.0f, 8.0f);
-
-        // Check if values changed
-        if (oldPersistence != persistence || oldOctaves != octaves || oldwidth != width || oldheight != height || oldfrequency != frequency) {
+        ImGui::SliderInt("Scale", &scale, 0, 100);
+        ImGui::SliderFloat("Lacunarity", &lacunarity, 0.0f, 5.0f);
+        ImGui::SliderFloat("Height Scale", &heightScale, 0.0f, 50.0f);
+        if (oldpersistence != persistence || oldoctaves != octaves ||
+            oldwidth != width || oldheight != height || oldfrequency != frequency || oldscale != scale || oldLacunarity != lacunarity || oldheightscale != heightScale) {
             terrainNeedsUpdate = true;
         }
 
-
         ImGui::End();
 
-        // Render ImGui
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
     }
+
 
     // Camera variables
     glm::vec3 cameraPos = glm::vec3(0.0f, 0.0f, 3.0f); // Camera position
@@ -88,22 +93,49 @@
     float deltaTime = 0.0f; // Time between frames
     float lastFrame = 0.0f; // Time of last frame
 
-    // Keyboard input processing
-    void processInput(GLFWwindow* window) {
-        float cameraSpeed = 2.5f * deltaTime; // Adjust camera speed based on time
+    bool isMouseOverImGui = false;  // Flag to check if ImGui has mouse focus
+    bool cameraControlEnabled = true;
 
-        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
-            cameraPos += cameraSpeed * cameraFront;
-        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
-            cameraPos -= cameraSpeed * cameraFront;
-        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-            cameraPos -= glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
-        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
-            cameraPos += glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
+    void processInput(GLFWwindow* window) {
+        static bool eKeyPressed = false;  // Track E key state
+
+        // Toggle GUI with E key
+        if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) {
+            if (!eKeyPressed) {  // Only toggle once per press
+                isGuiOpen = !isGuiOpen;
+                if (isGuiOpen) {
+                    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+                }
+                else {
+                    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+                }
+                eKeyPressed = true;
+            }
+        }
+        else {
+            eKeyPressed = false;
+        }
+
+        // Only process camera movement if GUI is closed
+        if (!isGuiOpen) {
+            float cameraSpeed = 2.5f * deltaTime;
+            if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+                cameraPos += cameraSpeed * cameraFront;
+            if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+                cameraPos -= cameraSpeed * cameraFront;
+            if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+                cameraPos -= glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
+            if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+                cameraPos += glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
+        }
     }
+
+
 
     // Mouse callback for camera orientation
     void mouse_callback(GLFWwindow* window, double xpos, double ypos) {
+        if (isGuiOpen) return;  // Don't process mouse movement when GUI is open
+
         if (firstMouse) {
             lastX = xpos;
             lastY = ypos;
@@ -111,18 +143,17 @@
         }
 
         float xoffset = xpos - lastX;
-        float yoffset = lastY - ypos; // Reversed since y-coordinates go from bottom to top
+        float yoffset = lastY - ypos;
         lastX = xpos;
         lastY = ypos;
 
-        float sensitivity = 0.1f; // Mouse sensitivity
+        float sensitivity = 0.1f;
         xoffset *= sensitivity;
         yoffset *= sensitivity;
 
         yaw += xoffset;
         pitch += yoffset;
 
-        // Constrain pitch
         if (pitch > 89.0f)
             pitch = 89.0f;
         if (pitch < -89.0f)
@@ -234,7 +265,7 @@
         float seed = glfwGetTime(); //for random generation everytime, can be replaced with a fixed value acting as seed, mostly for elevation
 
 
-        TerrainData terrain = generateTerrain(width, height, scale, seed, octaves, persistence, frequency);
+        TerrainData terrain = generateTerrain(width, height, scale, seed, octaves, persistence, frequency, lacunarity, heightScale);
 
 
         glGenBuffers(1, &terrainVBO);
@@ -267,7 +298,6 @@
 
         // Register mouse callback
         glfwSetCursorPosCallback(window, mouse_callback);
-       // glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED); // Hide and capture the cursor
 
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
@@ -275,8 +305,6 @@
 
         // Render loop
         while (!glfwWindowShouldClose(window)) {
-
-
 
             // Calculate deltaTime
             float currentFrame = glfwGetTime();
@@ -313,7 +341,9 @@
             if (terrainNeedsUpdate) {
 
                 // Regenerate terrain with new values
-                TerrainData newTerrain = generateTerrain(width, height, scale, 10, octaves, persistence, frequency);
+                std::cout << octaves << " " << persistence << std::endl;
+                float seed = glfwGetTime();
+                TerrainData newTerrain = generateTerrain(width, height, scale, seed, octaves, persistence, frequency, lacunarity, heightScale);
 
                 // Update the buffers
                 glBindBuffer(GL_ARRAY_BUFFER, terrainVBO);
@@ -344,8 +374,14 @@
             glBindVertexArray(terrainVAO);
             glDrawElements(GL_TRIANGLES, terrain.indices.size(), GL_UNSIGNED_INT, 0);
 
-            renderImGuiMenu();
+            // Only render ImGui if menu is open
+            if (isGuiOpen) {
+                renderImGuiMenu();
+            }
 
+            // Check if ImGui is hovered and manage camera control
+            isMouseOverImGui = ImGui::IsAnyItemHovered() || ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow);
+            cameraControlEnabled = !isMouseOverImGui;
 
             // Swap buffers and poll events
             glfwSwapBuffers(window);
