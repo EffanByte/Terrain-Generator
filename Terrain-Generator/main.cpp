@@ -299,7 +299,7 @@
         // Register mouse callback
         glfwSetCursorPosCallback(window, mouse_callback);
 
-        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
         initImGui(window);
 
