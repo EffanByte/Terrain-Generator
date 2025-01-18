@@ -32,10 +32,12 @@
     }
 
     // ImGui variables
+    int CHUNK_COUNT = 16;
+    int GRID_SIZE = 4;
     int octaves = 4;
     float persistence = 0.5f;
-    int width = 256;
-    int height = 256;
+    int width = 32;
+    int height = 32;
     float frequency = 2.0f;
     int scale = 50;
     float heightScale = 10.0f;
@@ -118,7 +120,7 @@
 
         // Only process camera movement if GUI is closed
         if (!isGuiOpen) {
-            float cameraSpeed = 2.5f * deltaTime;
+            float cameraSpeed = 20.0f * deltaTime;
             if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
                 cameraPos += cameraSpeed * cameraFront;
             if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
@@ -259,36 +261,69 @@
         glEnableVertexAttribArray(0);
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
 
-        unsigned int terrainVAO, terrainVBO, terrainEBO;
+        float seed;
 
 
-        float seed = glfwGetTime(); //for random generation everytime, can be replaced with a fixed value acting as seed, mostly for elevation
-
-
-        TerrainData terrain = generateTerrain(width, height, scale, seed, octaves, persistence, frequency, lacunarity, heightScale);
-
-
-        glGenBuffers(1, &terrainVBO);
-        glGenVertexArrays(1, &terrainVAO);
-        glGenBuffers(1, &terrainEBO);
-        glBindVertexArray(terrainVAO);
-
-        // Load vertex data
-        glBindBuffer(GL_ARRAY_BUFFER, terrainVBO);
-        glBufferData(GL_ARRAY_BUFFER,
-            terrain.vertices.size() * sizeof(float),
-            terrain.vertices.data(),
-            GL_STATIC_DRAW);
-
-        // Load index data
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, terrainEBO);
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER,
-            terrain.indices.size() * sizeof(unsigned int),
-            terrain.indices.data(),
-            GL_STATIC_DRAW);
+        struct TerrainChunk {
+            unsigned int VAO, VBO, EBO;
+            TerrainData terrain;
+            float xOffset, zOffset;
+        };
         
-        glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+        std::vector<TerrainChunk> chunkList;
+        unsigned int zOffset = 0;
+        for (int i = 0; i < CHUNK_COUNT; i++) {
+            seed = glfwGetTime();
+            TerrainChunk chunk;
+
+            // Calculate grid position
+            int gridX = i % GRID_SIZE;
+            int gridZ = i / GRID_SIZE;
+
+            // Calculate world position
+            chunk.xOffset = gridX * (width - 1); // Correct for overlap
+            chunk.zOffset = gridZ * (height - 1); // Correct for overlap
+
+
+            // Generate terrain data first
+            chunk.terrain = generateTerrain(width, height, scale, seed, octaves,
+                persistence, frequency, lacunarity, heightScale, chunk.xOffset, chunk.zOffset);
+
+            //// set position of terrain data according to grid position
+            //for (int i = 0; i < chunk.terrain.vertices.size(); i++)
+            //{
+            //    if (i % 3 == 0)
+            //        chunk.terrain.vertices.at(i) += chunk.xOffset;
+            //    if (i % 3 == 2)
+            //        chunk.terrain.vertices.at(i) += chunk.zOffset;
+            //}
+            // Create OpenGL buffers
+            glGenVertexArrays(1, &chunk.VAO);
+            glGenBuffers(1, &chunk.VBO);
+            glGenBuffers(1, &chunk.EBO);
+
+            // Bind and setup VAO/VBO
+            glBindVertexArray(chunk.VAO);
+            glBindBuffer(GL_ARRAY_BUFFER, chunk.VBO);
+            glBufferData(GL_ARRAY_BUFFER,
+                chunk.terrain.vertices.size() * sizeof(float),
+                chunk.terrain.vertices.data(),
+                GL_STATIC_DRAW);
+
+            // Setup indices
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, chunk.EBO);
+            glBufferData(GL_ELEMENT_ARRAY_BUFFER,
+                chunk.terrain.indices.size() * sizeof(unsigned int),
+                chunk.terrain.indices.data(),
+                GL_STATIC_DRAW);
+
+            // Setup vertex attributes
+            glEnableVertexAttribArray(0);
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+
+            // Add to list
+            chunkList.push_back(chunk);
+        }
 
         // Shader setup (place the shaders in the same directory)
         Shader shader("shader.vs", "shader.fs");
@@ -305,7 +340,6 @@
 
         // Render loop
         while (!glfwWindowShouldClose(window)) {
-
             // Calculate deltaTime
             float currentFrame = glfwGetTime();
             deltaTime = currentFrame - lastFrame;
@@ -329,8 +363,9 @@
             glm::mat4 projection = glm::perspective(glm::radians(45.0f), 800.0f / 600.0f, 0.1f, 100.0f);
             GLint projLoc = glGetUniformLocation(shader.ID, "projection");
             glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
-            // In the render loop, before drawing:
-            glm::mat4 model = glm::mat4(1.0f); // Identity matrix
+
+            // Model matrix
+            glm::mat4 model = glm::mat4(1.0f);
             GLint modelLoc = glGetUniformLocation(shader.ID, "model");
             glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
 
@@ -338,59 +373,62 @@
             glBindVertexArray(cubeVAO);
             glDrawArrays(GL_TRIANGLES, 0, 36);
 
+            // Update terrain if needed
             if (terrainNeedsUpdate) {
+                for (int i = 0; i < chunkList.size(); i++) {
+                    float seed = glfwGetTime();
+                    TerrainChunk chunk = chunkList[i];
+                    // Calculate grid position
+                    int gridX = i % GRID_SIZE;
+                    int gridZ = i / GRID_SIZE;
 
-                // Regenerate terrain with new values
-                std::cout << octaves << " " << persistence << std::endl;
-                float seed = glfwGetTime();
-                TerrainData newTerrain = generateTerrain(width, height, scale, seed, octaves, persistence, frequency, lacunarity, heightScale);
+                    // Calculate world position
+                    chunk.xOffset = gridX * (width - 1); // Correct for overlap
+                    chunk.zOffset = gridZ * (height - 1); // Correct for overlap
 
-                // Update the buffers
-                glBindBuffer(GL_ARRAY_BUFFER, terrainVBO);
-                glBufferData(GL_ARRAY_BUFFER,
-                    newTerrain.vertices.size() * sizeof(float),
-                    newTerrain.vertices.data(),
-                    GL_DYNAMIC_DRAW);
+                    chunk.terrain = generateTerrain(width, height, scale, seed, octaves, persistence, frequency, lacunarity, heightScale, chunk.xOffset, chunk.zOffset);
 
-                glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, terrainEBO);
-                glBufferData(GL_ELEMENT_ARRAY_BUFFER,
-                    newTerrain.indices.size() * sizeof(unsigned int),
-                    newTerrain.indices.data(),
-                    GL_DYNAMIC_DRAW);
+                    glBindBuffer(GL_ARRAY_BUFFER, chunk.VBO);
+                    glBufferData(GL_ARRAY_BUFFER,
+                        chunk.terrain.vertices.size() * sizeof(float),
+                        chunk.terrain.vertices.data(),
+                        GL_DYNAMIC_DRAW);
 
-                terrain = newTerrain;  // Update the terrain data
-                terrainNeedsUpdate = false;  // Reset the flag
+                    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, chunk.EBO);
+                    glBufferData(GL_ELEMENT_ARRAY_BUFFER,
+                        chunk.terrain.indices.size() * sizeof(unsigned int),
+                        chunk.terrain.indices.data(),
+                        GL_DYNAMIC_DRAW);
+                }
+                terrainNeedsUpdate = false; // Reset update flag
             }
 
-            noiseshader.use();
-
-
+            // Render terrain chunks
             noiseshader.use();
             glUniformMatrix4fv(glGetUniformLocation(noiseshader.ID, "model"), 1, GL_FALSE, glm::value_ptr(model));
             glUniformMatrix4fv(glGetUniformLocation(noiseshader.ID, "view"), 1, GL_FALSE, glm::value_ptr(view));
             glUniformMatrix4fv(glGetUniformLocation(noiseshader.ID, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
 
-
-            glBindVertexArray(terrainVAO);
-            glDrawElements(GL_TRIANGLES, terrain.indices.size(), GL_UNSIGNED_INT, 0);
-
-            // Only render ImGui if menu is open
-            if (isGuiOpen) {
-                renderImGuiMenu();
+            for (const TerrainChunk& chunk : chunkList) {
+                glBindVertexArray(chunk.VAO);
+                glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(chunk.terrain.indices.size()), GL_UNSIGNED_INT, 0);
             }
 
-            // Check if ImGui is hovered and manage camera control
-            isMouseOverImGui = ImGui::IsAnyItemHovered() || ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow);
-            cameraControlEnabled = !isMouseOverImGui;
+            // Render ImGui menu
+            renderImGuiMenu();
 
             // Swap buffers and poll events
             glfwSwapBuffers(window);
             glfwPollEvents();
         }
 
+        // Cleanup
         ImGui_ImplOpenGL3_Shutdown();
         ImGui_ImplGlfw_Shutdown();
         ImGui::DestroyContext();
+
+        glfwTerminate();
+        return 0;
 
         // Cleanup
         glDeleteVertexArrays(1, &cubeVAO);
