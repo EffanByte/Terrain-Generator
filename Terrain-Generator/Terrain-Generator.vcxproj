@@ -156,6 +156,8 @@
   <ItemGroup>
     <None Include="noiseshader.fs" />
     <None Include="noiseshader.vs" />
+    <None Include="seashader.fs" />
+    <None Include="seashader.vs" />
     <None Include="shader.fs" />
     <None Include="shader.vs" />
   </ItemGroup>

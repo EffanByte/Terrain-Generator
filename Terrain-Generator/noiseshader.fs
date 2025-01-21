@@ -2,6 +2,7 @@
 
 out vec4 FragColor;
 in vec3 position;
+uniform float seaLevel;
 
 // Improved hash function
 vec2 hash2(vec2 p) {
@@ -75,25 +76,16 @@ void main()
     // Add subtle variation based on additional noise layers
     float detailNoise = gradientNoise(position.xz * 10.0) * 0.1;
     
-    if (adjustedHeight < -1) {
-        FragColor = smoothColor(adjustedHeight, waterDeep, waterShallow, -0.5, 0.2);
-    }
-    else if (adjustedHeight < 0.5) {
-        FragColor = smoothColor(adjustedHeight, waterShallow, sandColor, 0.0, 0.1);
-    }
-    else if (adjustedHeight < 3) {
+    if (adjustedHeight < seaLevel + 3) {
         FragColor = smoothColor(adjustedHeight, sandColor, grassLight, 0.3, 0.1);
-    }
-    else if (adjustedHeight < 6) {
-        FragColor = smoothColor(adjustedHeight, grassLight, grassDark, 0.5, 0.2);
-    }
-    else if (adjustedHeight < 7) {
-        FragColor = smoothColor(adjustedHeight, grassDark, mountainColor, 0.9, 0.2);
-    }
-    else {
-        FragColor = smoothColor(adjustedHeight, mountainColor, snowColor, 1.4, 0.3);
-    }
-    
+}   else if (adjustedHeight < seaLevel + 6) {
+    FragColor = smoothColor(adjustedHeight, grassLight, grassDark, 0.5, 0.2);
+}   else if (adjustedHeight < seaLevel + 8) {
+    FragColor = smoothColor(adjustedHeight, grassDark, mountainColor, 0.9, 0.2);
+}   else {
+    FragColor = smoothColor(adjustedHeight, mountainColor, snowColor, 1.4, 0.3);
+}
+
     // Add subtle detail variation
     FragColor.rgb += vec3(detailNoise);
     

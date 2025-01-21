@@ -33,7 +33,7 @@ float generateTransitionNoise(float worldX, float worldZ, float seed, float scal
     // Normalize and adjust the transition speed
     // Higher values = faster transition, lower values = slower transition
     transitionSpeed = (transitionSpeed + 1.0f) * 0.5f;  // Normalize to [0,1]
-    transitionSpeed = pow(transitionSpeed, 2.0f);       // Optional: Make speed changes more dramatic
+  //  transitionSpeed = pow(transitionSpeed, 8.0f);       // Optional: Make speed changes more dramatic
 
     // Calculate progress value based on some progression factor (e.g., time or position)
     float progressValue = (worldX + worldZ) / (scale * 10.0f);  // You can modify this based on your needs

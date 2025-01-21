@@ -57,6 +57,8 @@
     <None Include="shader.fs" />
     <None Include="noiseshader.vs" />
     <None Include="noiseshader.fs" />
+    <None Include="seashader.vs" />
+    <None Include="seashader.fs" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\include\noise.h">

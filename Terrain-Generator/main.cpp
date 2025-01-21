@@ -17,6 +17,69 @@
         glViewport(0, 0, width, height);
     }
 
+    struct Vertex {
+        float x, y, z;
+    };
+
+    std::vector<Vertex> generatePlane(float width, float height, float seaLevel) {
+        return {
+            { -width / 2, seaLevel, -height / 2 },
+            {  width / 2, seaLevel, -height / 2 },
+            {  width / 2, seaLevel,  height / 2 },
+            { -width / 2, seaLevel,  height / 2 },
+        };
+    }
+
+    GLuint generatePlaneVAO(std::vector<Vertex>& vertices, GLuint& VBO) {
+        // Indices for the two triangles that make up the plane
+        std::vector<GLuint> indices = {
+            0, 1, 2, // First triangle
+            2, 3, 0  // Second triangle
+        };
+
+        // Generate and bind VAO
+        GLuint VAO;
+        glGenVertexArrays(1, &VAO);
+        glBindVertexArray(VAO);
+
+        // Generate and bind VBO for vertex data
+        glGenBuffers(1, &VBO);
+        glBindBuffer(GL_ARRAY_BUFFER, VBO);
+        glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(Vertex), vertices.data(), GL_DYNAMIC_DRAW);
+
+        // Generate and bind EBO for indices
+        GLuint EBO;
+        glGenBuffers(1, &EBO);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(GLuint), indices.data(), GL_STATIC_DRAW);
+
+        // Specify vertex attribute pointers
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0); // Position attribute
+        glEnableVertexAttribArray(0);
+
+        // Unbind VAO to prevent accidental modification
+        glBindVertexArray(0);
+
+        // Clean up (unbind VBO and EBO)
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+        return VAO;
+    }
+
+    void updateSeaLevel(std::vector<Vertex>& vertices, float seaLevel, GLuint VBO) {
+        for (auto& vertex : vertices) {
+            vertex.y = seaLevel; // Update the Y-coordinate to match the new sea level
+        }
+
+        // Update the VBO with the new vertex data
+        glBindBuffer(GL_ARRAY_BUFFER, VBO);
+        glBufferSubData(GL_ARRAY_BUFFER, 0, vertices.size() * sizeof(Vertex), vertices.data());
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+    }
+
+
+
     bool isGuiOpen = false;  // Tracks whether the GUI menu is open
 
     void initImGui(GLFWwindow* window) {
@@ -40,8 +103,13 @@
     int scale = 50;
     float heightScale = 10.0f;
     float lacunarity = 2.0f;
+    float seaLevel = 0.0f;
+
 
     bool terrainNeedsUpdate = false; //update whenever changes in noise function
+
+
+
 
     void renderImGuiMenu() {
         if (!isGuiOpen) return;  // Don't render if menu is closed
@@ -60,6 +128,7 @@
         float oldpersistence = persistence;
         float oldheightscale = heightScale;
         float oldLacunarity = lacunarity;
+        float oldseaLevel = seaLevel;
 
         ImGui::SliderFloat("Persistence", &persistence, 0.0f, 1.0f);
         ImGui::SliderInt("Octaves", &octaves, 0, 10);
@@ -69,8 +138,10 @@
         ImGui::SliderInt("Scale", &scale, 0, 100);
         ImGui::SliderFloat("Lacunarity", &lacunarity, 0.0f, 5.0f);
         ImGui::SliderFloat("Height Scale", &heightScale, 0.0f, 50.0f);
+        ImGui::SliderFloat("Sea Level", &seaLevel, -10.0f, 10.0f);
+
         if (oldpersistence != persistence || oldoctaves != octaves ||
-            oldwidth != width || oldheight != height || oldfrequency != frequency || oldscale != scale || oldLacunarity != lacunarity || oldheightscale != heightScale) {
+            oldwidth != width || oldheight != height || oldfrequency != frequency || oldscale != scale || oldLacunarity != lacunarity || oldheightscale != heightScale || oldseaLevel != seaLevel) {
             terrainNeedsUpdate = true;
         }
 
@@ -80,7 +151,6 @@
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
     }
 
-
     // Camera variables
     glm::vec3 cameraPos = glm::vec3(0.0f, 0.0f, 3.0f); // Camera position
     glm::vec3 cameraFront = glm::vec3(0.0f, 0.0f, -1.0f); // Camera facing direction
@@ -88,7 +158,7 @@
     float yaw = -90.0f; // Initial yaw
     float pitch = 0.0f; // Initial pitch
     float lastX = 400, lastY = 300; // Mouse position
-    bool firstMouse = true; // First mouse movement flag
+    bool firstMouse = true; // First mouse movement flag;
 
     float deltaTime = 0.0f; // Time between frames
     float lastFrame = 0.0f; // Time of last frame
@@ -118,7 +188,7 @@
 
         // Only process camera movement if GUI is closed
         if (!isGuiOpen) {
-            float cameraSpeed = 2.5f * deltaTime;
+            float cameraSpeed = 12.5f * deltaTime;
             if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
                 cameraPos += cameraSpeed * cameraFront;
             if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
@@ -197,9 +267,11 @@
         glViewport(0, 0, 800, 600);
         glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 
+        glfwWindowHint(GLFW_DEPTH_BITS, 24);
         // Enable depth testing
         glEnable(GL_DEPTH_TEST);
-
+        glDepthFunc(GL_LESS);
+        glEnable(GL_DEPTH_CLAMP);
         // Cube vertices
         float cubeVertices[] = {
             // positions
@@ -259,8 +331,16 @@
         glEnableVertexAttribArray(0);
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
 
-        unsigned int terrainVAO, terrainVBO, terrainEBO;
+        float planeWidth = 256.0f;
+        float planeHeight = 256.0f;
+        std::vector<Vertex> planeVertices = generatePlane(planeWidth, planeHeight, seaLevel);
 
+
+        GLuint planeVBO;
+        GLuint planeVAO = generatePlaneVAO(planeVertices, planeVBO);
+
+
+        unsigned int terrainVAO, terrainVBO, terrainEBO;
 
         float seed = glfwGetTime(); //for random generation everytime, can be replaced with a fixed value acting as seed, mostly for elevation
 
@@ -293,7 +373,8 @@
         // Shader setup (place the shaders in the same directory)
         Shader shader("shader.vs", "shader.fs");
         Shader noiseshader("noiseshader.vs", "noiseshader.fs");
-        // Background color
+        Shader seashader("seashader.vs", "seashader.fs");
+        // Background color     
         glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
 
         // Register mouse callback
@@ -326,13 +407,14 @@
             glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
 
             // Projection matrix (perspective projection)
-            glm::mat4 projection = glm::perspective(glm::radians(45.0f), 800.0f / 600.0f, 0.1f, 100.0f);
+            glm::mat4 projection = glm::perspective(glm::radians(45.0f), 800.0f / 600.0f, 1.0f, 300.0f);
             GLint projLoc = glGetUniformLocation(shader.ID, "projection");
             glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
             // In the render loop, before drawing:
             glm::mat4 model = glm::mat4(1.0f); // Identity matrix
             GLint modelLoc = glGetUniformLocation(shader.ID, "model");
             glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+
 
             // Draw the cube
             glBindVertexArray(cubeVAO);
@@ -361,11 +443,23 @@
                 terrain = newTerrain;  // Update the terrain data
                 terrainNeedsUpdate = false;  // Reset the flag
             }
+            
+            seashader.use();
+            glUniform1f(glGetUniformLocation(noiseshader.ID, "seaLevel"), seaLevel);
+            updateSeaLevel(planeVertices, seaLevel, planeVBO);
+            // Bind the VAO and draw the plane
+            glBindVertexArray(planeVAO);
+            glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+            glBindVertexArray(0);
+
+
+            glUniformMatrix4fv(glGetUniformLocation(seashader.ID, "model"), 1, GL_FALSE, glm::value_ptr(model));
+            glUniformMatrix4fv(glGetUniformLocation(seashader.ID, "view"), 1, GL_FALSE, glm::value_ptr(view));
+            glUniformMatrix4fv(glGetUniformLocation(seashader.ID, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
 
             noiseshader.use();
 
 
-            noiseshader.use();
             glUniformMatrix4fv(glGetUniformLocation(noiseshader.ID, "model"), 1, GL_FALSE, glm::value_ptr(model));
             glUniformMatrix4fv(glGetUniformLocation(noiseshader.ID, "view"), 1, GL_FALSE, glm::value_ptr(view));
             glUniformMatrix4fv(glGetUniformLocation(noiseshader.ID, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
