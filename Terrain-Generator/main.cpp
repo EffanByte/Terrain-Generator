@@ -1,3 +1,5 @@
+#define STB_IMAGE_IMPLEMENTATION
+
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
@@ -7,6 +9,8 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+
+#include "stb_image.h"
 #include <shader_m.h>
 #include <iostream>
 #include "noise.h"
@@ -78,7 +82,37 @@
         glBindBuffer(GL_ARRAY_BUFFER, 0);
     }
 
+    unsigned int loadCubemap(std::vector<std::string> faces)
+    {
+        unsigned int textureID;
+        glGenTextures(1, &textureID);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, textureID);
 
+        int width, height, nrChannels;
+        for (unsigned int i = 0; i < faces.size(); i++)
+        {
+            unsigned char* data = stbi_load(faces[i].c_str(), &width, &height, &nrChannels, 0);
+            if (data)
+            {
+                glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i,
+                    0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data
+                );
+                stbi_image_free(data);
+            }
+            else
+            {
+                std::cout << "Cubemap tex failed to load at path: " << faces[i] << std::endl;
+                stbi_image_free(data);
+            }
+        }
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+
+        return textureID;
+    }
 
     bool isGuiOpen = false;  // Tracks whether the GUI menu is open
 
@@ -107,10 +141,6 @@
 
 
     bool terrainNeedsUpdate = false; //update whenever changes in noise function
-
-
-
-
     void renderImGuiMenu() {
         if (!isGuiOpen) return;  // Don't render if menu is closed
 
@@ -135,10 +165,10 @@
         ImGui::SliderInt("Width", &width, 0, 1000);
         ImGui::SliderInt("height", &height, 0, 1000);
         ImGui::SliderFloat("Frequency", &frequency, 0.0f, 8.0f);
-        ImGui::SliderInt("Scale", &scale, 0, 100);
+        ImGui::SliderInt("Scale", &scale, 5, 250);
         ImGui::SliderFloat("Lacunarity", &lacunarity, 0.0f, 5.0f);
         ImGui::SliderFloat("Height Scale", &heightScale, 0.0f, 50.0f);
-        ImGui::SliderFloat("Sea Level", &seaLevel, -10.0f, 10.0f);
+        ImGui::SliderFloat("Sea Level", &seaLevel, -25.0f, 10.0f);
 
         if (oldpersistence != persistence || oldoctaves != octaves ||
             oldwidth != width || oldheight != height || oldfrequency != frequency || oldscale != scale || oldLacunarity != lacunarity || oldheightscale != heightScale || oldseaLevel != seaLevel) {
@@ -188,7 +218,7 @@
 
         // Only process camera movement if GUI is closed
         if (!isGuiOpen) {
-            float cameraSpeed = 12.5f * deltaTime;
+            float cameraSpeed = 40.0f * deltaTime;
             if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
                 cameraPos += cameraSpeed * cameraFront;
             if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
@@ -270,69 +300,86 @@
         glfwWindowHint(GLFW_DEPTH_BITS, 24);
         // Enable depth testing
         glEnable(GL_DEPTH_TEST);
-        glDepthFunc(GL_LESS);
-        glEnable(GL_DEPTH_CLAMP);
+
+
+        // Shader setup (place the shaders in the same directory)
+        Shader skyshader("skyshader.vs", "skyshader.fs");
+        Shader noiseshader("noiseshader.vs", "noiseshader.fs");
+        Shader seashader("seashader.vs", "seashader.fs");
+
         // Cube vertices
-        float cubeVertices[] = {
-            // positions
-            -0.5f, -0.5f, -0.5f,
-             0.5f, -0.5f, -0.5f,
-             0.5f,  0.5f, -0.5f,
-             0.5f,  0.5f, -0.5f,
-            -0.5f,  0.5f, -0.5f,
-            -0.5f, -0.5f, -0.5f,
+        float skyboxVertices[] = {
+            // positions          
+            -1.0f,  1.0f, -1.0f,
+            -1.0f, -1.0f, -1.0f,
+             1.0f, -1.0f, -1.0f,
+             1.0f, -1.0f, -1.0f,
+             1.0f,  1.0f, -1.0f,
+            -1.0f,  1.0f, -1.0f,
 
-            -0.5f, -0.5f,  0.5f,
-             0.5f, -0.5f,  0.5f,
-             0.5f,  0.5f,  0.5f,
-             0.5f,  0.5f,  0.5f,
-            -0.5f,  0.5f,  0.5f,
-            -0.5f, -0.5f,  0.5f,
+            -1.0f, -1.0f,  1.0f,
+            -1.0f, -1.0f, -1.0f,
+            -1.0f,  1.0f, -1.0f,
+            -1.0f,  1.0f, -1.0f,
+            -1.0f,  1.0f,  1.0f,
+            -1.0f, -1.0f,  1.0f,
 
-            -0.5f,  0.5f,  0.5f,
-            -0.5f,  0.5f, -0.5f,
-            -0.5f, -0.5f, -0.5f,
-            -0.5f, -0.5f, -0.5f,
-            -0.5f, -0.5f,  0.5f,
-            -0.5f,  0.5f,  0.5f,
+             1.0f, -1.0f, -1.0f,
+             1.0f, -1.0f,  1.0f,
+             1.0f,  1.0f,  1.0f,
+             1.0f,  1.0f,  1.0f,
+             1.0f,  1.0f, -1.0f,
+             1.0f, -1.0f, -1.0f,
 
-             0.5f,  0.5f,  0.5f,
-             0.5f,  0.5f, -0.5f,
-             0.5f, -0.5f, -0.5f,
-             0.5f, -0.5f, -0.5f,
-             0.5f, -0.5f,  0.5f,
-             0.5f,  0.5f,  0.5f,
+            -1.0f, -1.0f,  1.0f,
+            -1.0f,  1.0f,  1.0f,
+             1.0f,  1.0f,  1.0f,
+             1.0f,  1.0f,  1.0f,
+             1.0f, -1.0f,  1.0f,
+            -1.0f, -1.0f,  1.0f,
 
-            -0.5f, -0.5f, -0.5f,
-             0.5f, -0.5f, -0.5f,
-             0.5f, -0.5f,  0.5f,
-             0.5f, -0.5f,  0.5f,
-            -0.5f, -0.5f,  0.5f,
-            -0.5f, -0.5f, -0.5f,
+            -1.0f,  1.0f, -1.0f,
+             1.0f,  1.0f, -1.0f,
+             1.0f,  1.0f,  1.0f,
+             1.0f,  1.0f,  1.0f,
+            -1.0f,  1.0f,  1.0f,
+            -1.0f,  1.0f, -1.0f,
 
-            -0.5f,  0.5f, -0.5f,
-             0.5f,  0.5f, -0.5f,
-             0.5f,  0.5f,  0.5f,
-             0.5f,  0.5f,  0.5f,
-            -0.5f,  0.5f,  0.5f,
-            -0.5f,  0.5f, -0.5f
+            -1.0f, -1.0f, -1.0f,
+            -1.0f, -1.0f,  1.0f,
+             1.0f, -1.0f, -1.0f,
+             1.0f, -1.0f, -1.0f,
+            -1.0f, -1.0f,  1.0f,
+             1.0f, -1.0f,  1.0f
         };
 
-
-        // Create VAO and VBO
-        unsigned int cubeVAO, cubeVBO;
-        glGenVertexArrays(1, &cubeVAO);
-        glGenBuffers(1, &cubeVBO);
-        glBindVertexArray(cubeVAO);
-
-        glBindBuffer(GL_ARRAY_BUFFER, cubeVBO);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(cubeVertices), cubeVertices, GL_STATIC_DRAW);
-
+        unsigned int skyboxVAO, skyboxVBO;
+        glGenVertexArrays(1, &skyboxVAO);
+        glGenBuffers(1, &skyboxVBO);
+        glBindVertexArray(skyboxVAO);
+        glBindBuffer(GL_ARRAY_BUFFER, skyboxVBO);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(skyboxVertices), &skyboxVertices, GL_STATIC_DRAW);
         glEnableVertexAttribArray(0);
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+            
+        // load textures
+        // -------------
+        std::vector<std::string> faces
+        {
+            "./textures/skybox/right.jpg",
+            "./textures/skybox/left.jpg",
+            "./textures/skybox/top.jpg",
+            "./textures/skybox/bottom.jpg",
+            "./textures/skybox/front.jpg",
+            "./textures/skybox/back.jpg"
+        };
+        unsigned int cubemapTexture = loadCubemap(faces);
 
-        float planeWidth = 256.0f;
-        float planeHeight = 256.0f;
+        skyshader.use();
+        skyshader.setInt("skybox", 0);
+
+        float planeWidth = width;
+        float planeHeight = height;
         std::vector<Vertex> planeVertices = generatePlane(planeWidth, planeHeight, seaLevel);
 
 
@@ -345,7 +392,7 @@
         float seed = glfwGetTime(); //for random generation everytime, can be replaced with a fixed value acting as seed, mostly for elevation
 
 
-        TerrainData terrain = generateTerrain(width, height, scale, seed, octaves, persistence, frequency, lacunarity, heightScale);
+        TerrainData terrain = generateTerrain(width, height, scale, seed, octaves);
 
 
         glGenBuffers(1, &terrainVBO);
@@ -370,10 +417,6 @@
         glEnableVertexAttribArray(0);
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
 
-        // Shader setup (place the shaders in the same directory)
-        Shader shader("shader.vs", "shader.fs");
-        Shader noiseshader("noiseshader.vs", "noiseshader.fs");
-        Shader seashader("seashader.vs", "seashader.fs");
         // Background color     
         glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
 
@@ -398,34 +441,27 @@
             // Clear the screen
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-            // Use the shader and draw the cube
-            shader.use();
-
+            skyshader.use();
             // View matrix (camera position and orientation)
             glm::mat4 view = glm::lookAt(cameraPos, cameraPos + cameraFront, cameraUp);
-            GLint viewLoc = glGetUniformLocation(shader.ID, "view");
+            GLint viewLoc = glGetUniformLocation(skyshader.ID, "view");
             glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
 
             // Projection matrix (perspective projection)
-            glm::mat4 projection = glm::perspective(glm::radians(45.0f), 800.0f / 600.0f, 1.0f, 300.0f);
-            GLint projLoc = glGetUniformLocation(shader.ID, "projection");
+            glm::mat4 projection = glm::perspective(glm::radians(45.0f), 800.0f / 600.0f, 1.0f, 500.0f);
+            GLint projLoc = glGetUniformLocation(skyshader.ID, "projection");
             glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
             // In the render loop, before drawing:
             glm::mat4 model = glm::mat4(1.0f); // Identity matrix
-            GLint modelLoc = glGetUniformLocation(shader.ID, "model");
+            GLint modelLoc = glGetUniformLocation(skyshader.ID, "model");
             glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
-
-
-            // Draw the cube
-            glBindVertexArray(cubeVAO);
-            glDrawArrays(GL_TRIANGLES, 0, 36);
 
             if (terrainNeedsUpdate) {
 
                 // Regenerate terrain with new values
                 std::cout << octaves << " " << persistence << std::endl;
                 float seed = glfwGetTime();
-                TerrainData newTerrain = generateTerrain(width, height, scale, seed, octaves, persistence, frequency, lacunarity, heightScale);
+                TerrainData newTerrain = generateTerrain(width, height, scale, seed, octaves);
 
                 // Update the buffers
                 glBindBuffer(GL_ARRAY_BUFFER, terrainVBO);
@@ -443,7 +479,21 @@
                 terrain = newTerrain;  // Update the terrain data
                 terrainNeedsUpdate = false;  // Reset the flag
             }
-            
+
+            noiseshader.use();
+
+
+            glUniformMatrix4fv(glGetUniformLocation(noiseshader.ID, "model"), 1, GL_FALSE, glm::value_ptr(model));
+            glUniformMatrix4fv(glGetUniformLocation(noiseshader.ID, "view"), 1, GL_FALSE, glm::value_ptr(view));
+            glUniformMatrix4fv(glGetUniformLocation(noiseshader.ID, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
+
+
+            glBindVertexArray(terrainVAO);
+            glDrawElements(GL_TRIANGLES, terrain.indices.size(), GL_UNSIGNED_INT, 0);
+
+            // draw skybox as last
+            glDepthFunc(GL_LEQUAL);  // change depth function so depth test passes when values are equal to depth buffer's content
+
             seashader.use();
             glUniform1f(glGetUniformLocation(noiseshader.ID, "seaLevel"), seaLevel);
             updateSeaLevel(planeVertices, seaLevel, planeVBO);
@@ -457,16 +507,19 @@
             glUniformMatrix4fv(glGetUniformLocation(seashader.ID, "view"), 1, GL_FALSE, glm::value_ptr(view));
             glUniformMatrix4fv(glGetUniformLocation(seashader.ID, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
 
-            noiseshader.use();
+            glDepthFunc(GL_LEQUAL);  // change depth function so depth test passes when values are equal to depth buffer's content
+            skyshader.use();
+            view = glm::mat4(glm::mat3(view)); // remove translation from the view matrix
+            glUniformMatrix4fv(glGetUniformLocation(skyshader.ID, "view"), 1, GL_FALSE, glm::value_ptr(view));
+            glUniformMatrix4fv(glGetUniformLocation(skyshader.ID, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
+            glDepthFunc(GL_LEQUAL);  // change depth function so depth test passes when values are equal to depth buffer's content
+            glBindVertexArray(skyboxVAO);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
+            glDrawArrays(GL_TRIANGLES, 0, 36);
+            glBindVertexArray(0);
+            glDepthFunc(GL_LESS); // set depth function back to default
 
-
-            glUniformMatrix4fv(glGetUniformLocation(noiseshader.ID, "model"), 1, GL_FALSE, glm::value_ptr(model));
-            glUniformMatrix4fv(glGetUniformLocation(noiseshader.ID, "view"), 1, GL_FALSE, glm::value_ptr(view));
-            glUniformMatrix4fv(glGetUniformLocation(noiseshader.ID, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
-
-
-            glBindVertexArray(terrainVAO);
-            glDrawElements(GL_TRIANGLES, terrain.indices.size(), GL_UNSIGNED_INT, 0);
 
             // Only render ImGui if menu is open
             if (isGuiOpen) {
@@ -486,9 +539,6 @@
         ImGui_ImplGlfw_Shutdown();
         ImGui::DestroyContext();
 
-        // Cleanup
-        glDeleteVertexArrays(1, &cubeVAO);
-        glDeleteBuffers(1, &cubeVBO);
         glfwDestroyWindow(window);
         glfwTerminate();
         return 0;

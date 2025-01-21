@@ -53,8 +53,8 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <None Include="shader.vs" />
-    <None Include="shader.fs" />
+    <None Include="skyshader.vs" />
+    <None Include="skyshader.fs" />
     <None Include="noiseshader.vs" />
     <None Include="noiseshader.fs" />
     <None Include="seashader.vs" />
@@ -90,6 +90,9 @@
     </ClInclude>
     <ClInclude Include="..\imgui\imgui.h">
       <Filter>Header Files\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\stb_image.h">
+      <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

@@ -77,14 +77,17 @@ void main()
     float detailNoise = gradientNoise(position.xz * 10.0) * 0.1;
     
     if (adjustedHeight < seaLevel + 3) {
-        FragColor = smoothColor(adjustedHeight, sandColor, grassLight, 0.3, 0.1);
-}   else if (adjustedHeight < seaLevel + 6) {
-    FragColor = smoothColor(adjustedHeight, grassLight, grassDark, 0.5, 0.2);
-}   else if (adjustedHeight < seaLevel + 8) {
-    FragColor = smoothColor(adjustedHeight, grassDark, mountainColor, 0.9, 0.2);
-}   else {
-    FragColor = smoothColor(adjustedHeight, mountainColor, snowColor, 1.4, 0.3);
-}
+        FragColor = smoothColor(adjustedHeight, grassLight, grassDark, 0.3, 0.1);
+    }
+    else if (adjustedHeight < seaLevel + 6) {
+        FragColor = smoothColor(adjustedHeight, grassLight, grassDark, 0.5, 0.2);
+    }
+    else if (adjustedHeight < seaLevel + 8) {
+        FragColor = smoothColor(adjustedHeight, grassDark, mountainColor, 0.9, 0.2);
+    }
+    else {
+        FragColor = smoothColor(adjustedHeight, mountainColor, snowColor, 1.4, 0.3);
+    }
 
     // Add subtle detail variation
     FragColor.rgb += vec3(detailNoise);
