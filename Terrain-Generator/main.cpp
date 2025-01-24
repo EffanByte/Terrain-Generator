@@ -495,8 +495,12 @@
             glDepthFunc(GL_LEQUAL);  // change depth function so depth test passes when values are equal to depth buffer's content
 
             seashader.use();
-            glUniform1f(glGetUniformLocation(noiseshader.ID, "seaLevel"), seaLevel);
+
+            float wave = glm::sin(glfwGetTime());
+            glUniform1f(glGetUniformLocation(seashader.ID, "seaLevel"), seaLevel);
+            glUniform1f(glGetUniformLocation(seashader.ID, "u_time"), wave);
             updateSeaLevel(planeVertices, seaLevel, planeVBO);
+
             // Bind the VAO and draw the plane
             glBindVertexArray(planeVAO);
             glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
