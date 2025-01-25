@@ -26,20 +26,41 @@
     };
 
     std::vector<Vertex> generatePlane(float width, float height, float seaLevel) {
-        return {
-            { -width / 2, seaLevel, -height / 2 },
-            {  width / 2, seaLevel, -height / 2 },
-            {  width / 2, seaLevel,  height / 2 },
-            { -width / 2, seaLevel,  height / 2 },
-        };
+        std::vector<Vertex> vertices;
+        for (int z = 0; z <= height; ++z) {
+            for (int x = 0; x <= width; ++x) {
+                // Map coordinates from 0-width and 0-height to actual plane dimensions
+                float xPos = (x / static_cast<float>(width)) * width;
+                float zPos = (z / static_cast<float>(height)) * height;
+                vertices.push_back({ xPos - width / 2.0f, seaLevel, zPos - height / 2.0f });
+            }
+        }
+        return vertices;
     }
 
-    GLuint generatePlaneVAO(std::vector<Vertex>& vertices, GLuint& VBO) {
-        // Indices for the two triangles that make up the plane
-        std::vector<GLuint> indices = {
-            0, 1, 2, // First triangle
-            2, 3, 0  // Second triangle
-        };
+    GLuint generatePlaneVAO(std::vector<Vertex>& vertices, std::vector<GLuint>& indices, GLuint& VBO, int width, int height) {
+        // Generate indices for the grid
+
+
+        for (int z = 0; z < height; ++z) {
+            for (int x = 0; x < width; ++x) {
+                // Indices of the four corners of the current quad
+                GLuint topLeft = z * (width + 1) + x;
+                GLuint topRight = topLeft + 1;
+                GLuint bottomLeft = (z + 1) * (width + 1) + x;
+                GLuint bottomRight = bottomLeft + 1;
+
+                // First triangle (top-left, bottom-left, bottom-right)
+                indices.push_back(topLeft);
+                indices.push_back(bottomLeft);
+                indices.push_back(bottomRight);
+
+                // Second triangle (top-left, bottom-right, top-right)
+                indices.push_back(topLeft);
+                indices.push_back(bottomRight);
+                indices.push_back(topRight);
+            }
+        }
 
         // Generate and bind VAO
         GLuint VAO;
@@ -139,8 +160,15 @@
     float lacunarity = 2.0f;
     float seaLevel = 0.0f;
 
+    // Water variables (Change them to uniforms later?)
+    float seaFrequency = 0.2f; //median value
+    float seaAmplitude = 0.5f; // median value
+    float waveSpeed = 0.001f;    // median value
+    int waveCount = 4; 
+    float u_time;
 
     bool terrainNeedsUpdate = false; //update whenever changes in noise function
+
     void renderImGuiMenu() {
         if (!isGuiOpen) return;  // Don't render if menu is closed
 
@@ -381,10 +409,10 @@
         float planeWidth = width;
         float planeHeight = height;
         std::vector<Vertex> planeVertices = generatePlane(planeWidth, planeHeight, seaLevel);
-
-
+        std::vector<GLuint> planeIndices;
         GLuint planeVBO;
-        GLuint planeVAO = generatePlaneVAO(planeVertices, planeVBO);
+
+        GLuint planeVAO = generatePlaneVAO(planeVertices, planeIndices, planeVBO, width, height);
 
 
         unsigned int terrainVAO, terrainVBO, terrainEBO;
@@ -496,14 +524,19 @@
 
             seashader.use();
 
-            float wave = glm::sin(glfwGetTime());
+            u_time = glfwGetTime();
+            
             glUniform1f(glGetUniformLocation(seashader.ID, "seaLevel"), seaLevel);
-            glUniform1f(glGetUniformLocation(seashader.ID, "u_time"), wave);
+            glUniform1f(glGetUniformLocation(seashader.ID, "seafrequency"), seaFrequency);
+            glUniform1f(glGetUniformLocation(seashader.ID, "u_time"), u_time);
+            glUniform1f(glGetUniformLocation(seashader.ID, "wave_speed"), waveSpeed);
+            glUniform1f(glGetUniformLocation(seashader.ID, "sea_amplitude"), seaAmplitude);
+            glUniform1f(glGetUniformLocation(seashader.ID, "wave_count"), waveCount);
             updateSeaLevel(planeVertices, seaLevel, planeVBO);
 
             // Bind the VAO and draw the plane
             glBindVertexArray(planeVAO);
-            glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+            glDrawElements(GL_TRIANGLES, planeIndices.size(), GL_UNSIGNED_INT, 0);
             glBindVertexArray(0);
 
 
